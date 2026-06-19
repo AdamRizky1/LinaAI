@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lina AI - Trading Analysis & Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0e17; color: #e1e5eb; }
+        .glow-green { box-shadow: 0 0 10px rgba(34,197,94,0.5); }
+        .glow-red { box-shadow: 0 0 10px rgba(239,68,68,0.5); }
+        .signal-strong-buy { background: linear-gradient(135deg, rgba(34,197,94,0.35), rgba(34,197,94,0.05)); border: 2px solid rgba(34,197,94,0.8); }
+        .signal-buy { background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(34,197,94,0.02)); border: 1px solid rgba(34,197,94,0.3); }
+        .signal-hold { background: linear-gradient(135deg, rgba(156,163,175,0.12), rgba(156,163,175,0.02)); border: 1px solid rgba(156,163,175,0.3); }
+        .signal-sell { background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(239,68,68,0.02)); border: 1px solid rgba(239,68,68,0.3); }
+        .signal-strong-sell { background: linear-gradient(135deg, rgba(239,68,68,0.35), rgba(239,68,68,0.05)); border: 2px solid rgba(239,68,68,0.8); }
+        .scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+        .scroll-thin::-webkit-scrollbar-track { background: #111827; }
+        .scroll-thin::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        .scroll-thin::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        .pulse-dot { animation: pulse-dot 2s infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .fade-in { animation: fadeIn 0.4s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .signal-card { transition: all 0.3s ease; }
+        .chat-user { background: #1e3a5f; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .chat-ai { background: #1f2937; color: #d1d5db; align-self: flex-start; border-bottom-left-radius: 2px; }
+        
+        /* CSS TUTORIAL ONBOARDING */
+        #tutorial-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; display: none; }
+        .tut-highlight { position: absolute; border: 2px solid #3b82f6; border-radius: 8px; box-shadow: 0 0 15px rgba(59,130,246,0.8); z-index: 101; pointer-events: none; transition: all 0.3s ease; }
+        .tut-box { position: absolute; background: #1e293b; padding: 20px; border-radius: 12px; width: 300px; z-index: 102; box-shadow: 0 10px 25px rgba(0,0,0,0.5); transition: all 0.3s ease; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ===== TUTORIAL OVERLAY ===== -->
+<div id="tutorial-overlay">
+    <div id="tut-highlight" class="tut-highlight"></div>
+    <div id="tut-box" class="tut-box">
+        <h3 id="tut-title" class="text-lg font-bold text-white mb-2">Selamat Datang!</h3>
+        <p id="tut-text" class="text-sm text-gray-300 mb-4">Kita kenalan dulu sama fitur-fiturnya ya.</p>
+        <div class="flex justify-between items-center">
+            <button id="tut-skip" class="text-xs text-gray-500 hover:text-gray-300">Lewati</button>
+            <button id="tut-next" class="bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded-lg text-sm font-medium text-white">Lanjut</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="login-screen" class="fixed inset-0 z-50 bg-[#0a0e17] flex flex-col items-center justify-center p-4">
+    <div class="text-center mb-8">
+        <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center font-bold text-4xl text-white mx-auto mb-4 shadow-lg">L</div>
+        <h1 class="text-3xl font-bold text-white">Lina AI</h1>
+        <p class="text-gray-500 mt-2">Analisis Saham & Crypto Buat Pemula</p>
+    </div>
+    <div class="w-full max-w-xs space-y-4">
+        <input type="text" id="username-input" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-center text-white focus:outline-none focus:border-blue-500" placeholder="Masukkan nama kamu...">
+        <button id="login-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium shadow-lg transition">Masuk</button>
+    </div>
+    <p class="text-xs text-gray-700 mt-6">Data portofolio disimpan lokal di perangkat ini.</p>
+</div>
+
+<div id="pdf-report" class="hidden"></div>
+
+<!-- ============ MAIN APP (Hidden sebelum login) ============ -->
+<div id="main-app" class="hidden">
+
+    <!-- ============ HEADER ============ -->
+    <header class="sticky top-0 z-50 bg-[#0d1320] border-b border-gray-800 px-4 py-3 shadow-lg">
+        <div class="max-w-[1800px] mx-auto flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center font-bold text-lg text-white">L</div>
+                <div>
+                    <h1 class="text-lg font-bold text-white leading-tight">Lina AI</h1>
+                    <p class="text-xs text-gray-500">Analisis Saham Buat Pemula</p>
+                </div>
+            </div>
+
+            <div id="search-group" class="flex items-center gap-2 flex-wrap bg-[#111827] p-2 rounded-xl border border-gray-800">
+                <select id="marketSelect" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-semibold">
+                    <option value="NASDAQ">NASDAQ</option>
+                    <option value="IDX">IHSG (IDX)</option>
+                    <option value="CRYPTO">CRYPTO</option>
+                </select>
+                <div class="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 focus-within:border-blue-500 transition">
+                    <span class="text-xs text-gray-500">Kode:</span>
+                    <input type="text" id="symbolInput" value="AAPL" class="bg-transparent text-sm focus:outline-none w-28 font-mono uppercase" placeholder="Ketik kode...">
+                </div>
+                <button id="loadChartBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition">Cari</button>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <select id="intervalSelect" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+                    <option value="15">15m</option>
+                    <option value="60" selected>1H</option>
+                    <option value="240">4H</option>
+                    <option value="D">1D</option>
+                    <option value="W">1W</option>
+                </select>
+            </div>
+
+            <div class="flex items-center gap-2 ml-auto">
+                <button id="downloadPdfBtn" class="bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg> PDF
+                </button>
+                <button id="screenerScanBtn" class="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Scan
+                </button>
+                <span id="screenerCount" class="text-xs text-gray-500 hidden md:inline"></span>
+                <button id="notifBtn" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-2 rounded-lg text-sm transition" title="Aktifkan Notifikasi">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============ NAVIGATION TABS ============ -->
+    <nav class="sticky top-[65px] z-40 bg-[#0a0e17] border-b border-gray-800 px-4">
+        <div class="max-w-[1800px] mx-auto flex gap-2 py-2">
+            <button onclick="showPage('dashboard')" id="navDashboard" class="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white transition">Dashboard</button>
+            <button onclick="showPage('porto')" id="navPorto" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 transition">My Porto</button>
+            <button onclick="showPage('assistant')" id="navAssistant" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 transition">Lina Assistant</button>
+            <button onclick="showPage('profil')" id="navProfil" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 ml-auto transition">Profil</button>
+        </div>
+    </nav>
+
+    <main class="max-w-[1800px] mx-auto p-4 space-y-4">
+        <!-- PAGE 1: DASHBOARD -->
+        <div id="page-dashboard" class="space-y-4">
+            <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="height: 650px;">
+                    <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
+                        <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span><h2 class="text-sm font-semibold text-gray-300">Grafik Harga Real-time</h2></div>
+                        <span id="tvSymbolLabel" class="text-xs text-gray-500 font-mono">NASDAQ:AAPL</span>
+                    </div>
+                    <div id="tradingview-chart" class="flex-1 relative"></div>
+                </div>
+
+                <div class="lg:col-span-1 bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="height: 650px;">
+                    <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
+                        <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-cyan-400"></span><h2 class="text-sm font-semibold text-gray-300">Kesimpulan Analisis</h2></div>
+                        <select id="rangeSelect" class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs focus:outline-none"><option value="3mo">3 Bln</option><option value="6mo">6 Bln</option><option value="1y" selected>1 Thn</option><option value="2y">2 Thn</option></select>
+                    </div>
+                    <div id="yahooChartContainer" class="relative" style="height: 240px;">
+                        <div id="yahooChart" class="w-full h-full"></div>
+                        <div id="chartLoading" class="absolute inset-0 flex items-center justify-center bg-[#0d1320] z-10"><div class="text-center"><div class="inline-block w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin mb-2"></div><p class="text-xs text-gray-500">Memuat data...</p></div></div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto scroll-thin p-4 space-y-3">
+                        <div id="simpleSignalCard" class="signal-hold rounded-xl p-3 text-center transition-all duration-300">
+                            <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Saran Tindakan</div>
+                            <div id="simpleSignalIcon" class="text-3xl mb-1">⚪</div>
+                            <div id="simpleSignalText" class="text-lg font-bold mb-1">TUNGGU DULU</div>
+                            <div id="simpleSignalScore" class="text-[10px] text-gray-500">Skor: 0/10</div>
+                        </div>
+                        <div class="space-y-2 text-sm">
+                            <div class="bg-gray-800/40 rounded-lg p-2.5 border border-cyan-700/50"><div class="flex items-center gap-2 mb-1"><span id="bandarEmoji" class="text-cyan-400">👥</span><span class="text-xs font-semibold text-gray-400 uppercase">Deteksi Bandar (Value)</span></div><p id="bandarSimple" class="text-gray-300 text-sm">Menunggu data...</p></div>
+                            <div class="bg-gray-800/40 rounded-lg p-2.5 border border-gray-700/50"><div class="flex items-center gap-2 mb-1"><span class="text-blue-400">📈</span><span class="text-xs font-semibold text-gray-400 uppercase">Tren Harga (EMA)</span></div><p id="trendSimple" class="text-gray-300 text-sm">Menunggu data...</p></div>
+                            <div class="bg-gray-800/40 rounded-lg p-2.5 border border-gray-700/50"><div class="flex items-center gap-2 mb-1"><span class="text-yellow-400">⚖️</span><span class="text-xs font-semibold text-gray-400 uppercase">Antrian Beli/Jual (RSI)</span></div><p id="rsiSimple" class="text-gray-300 text-sm">Menunggu data...</p></div>
+                            <div class="bg-gray-800/40 rounded-lg p-2.5 border border-gray-700/50"><div class="flex items-center gap-2 mb-1"><span class="text-purple-400">⚡</span><span class="text-xs font-semibold text-gray-400 uppercase">Tenaga Market (MACD)</span></div><p id="macdSimple" class="text-gray-300 text-sm">Menunggu data...</p></div>
+                            <div class="bg-gray-800/40 rounded-lg p-2.5 border border-gray-700/50"><div class="flex items-center gap-2 mb-1"><span class="text-green-400">🎯</span><span class="text-xs font-semibold text-gray-400 uppercase">Posisi Harga (Bollinger)</span></div><p id="bbSimple" class="text-gray-300 text-sm">Menunggu data...</p></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="max-height: 350px;"><div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-800/30"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-indigo-400"></span><h2 class="text-sm font-semibold text-gray-300">Profil & Sektor Aset</h2></div></div><div id="profileBox" class="p-4 overflow-y-auto scroll-thin text-sm text-gray-400 space-y-2"><p class="text-gray-500">Memuat profil perusahaan...</p></div></div>
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="max-height: 350px;"><div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-800/30"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-red-400"></span><h2 class="text-sm font-semibold text-gray-300">Berita Terkait</h2></div></div><div id="newsBox" class="p-4 overflow-y-auto scroll-thin text-sm text-gray-400 space-y-3"><p class="text-gray-500">Mencari berita terbaru...</p></div></div>
+            </section>
+            <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="max-height: 450px;"><div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-800/30"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-400"></span><h2 class="text-sm font-semibold text-gray-300">Crypto</h2></div></div><div class="overflow-y-auto scroll-thin flex-1"><table class="w-full text-xs"><thead class="sticky top-0 bg-[#0d1320]"><tr class="text-gray-500 border-b border-gray-800"><th class="text-left px-3 py-2 font-medium">Aset & Kesimpulan</th><th class="text-center px-3 py-2 font-medium">Status</th></tr></thead><tbody id="screenerBodyCrypto"></tbody></table></div></div>
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="max-height: 450px;"><div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-800/30"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-blue-400"></span><h2 class="text-sm font-semibold text-gray-300">Saham US (NASDAQ)</h2></div></div><div class="overflow-y-auto scroll-thin flex-1"><table class="w-full text-xs"><thead class="sticky top-0 bg-[#0d1320]"><tr class="text-gray-500 border-b border-gray-800"><th class="text-left px-3 py-2 font-medium">Aset & Kesimpulan</th><th class="text-center px-3 py-2 font-medium">Status</th></tr></thead><tbody id="screenerBodyUS"></tbody></table></div></div>
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="max-height: 450px;"><div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-800/30"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-green-400"></span><h2 class="text-sm font-semibold text-gray-300">Saham IHSG (IDX)</h2></div></div><div class="overflow-y-auto scroll-thin flex-1"><table class="w-full text-xs"><thead class="sticky top-0 bg-[#0d1320]"><tr class="text-gray-500 border-b border-gray-800"><th class="text-left px-3 py-2 font-medium">Aset & Kesimpulan</th><th class="text-center px-3 py-2 font-medium">Status</th></tr></thead><tbody id="screenerBodyIDX"></tbody></table></div></div>
+            </section>
+            <section class="grid grid-cols-1 gap-4">
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="max-height: 300px;">
+                    <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800"><div class="flex items-center gap-2"><svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg><h2 class="text-sm font-semibold text-gray-300">Notifikasi Sinyal Screener</h2></div><div class="flex items-center gap-4"><label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer"><input type="checkbox" id="autoScanCheck" class="rounded bg-gray-800 border-gray-700 text-emerald-500 focus:ring-emerald-500"> Auto-scan 5 menit</label><button id="clearSignalsBtn" class="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 border border-gray-700 rounded">Clear Log</button></div></div>
+                    <div id="signalLog" class="flex-1 overflow-y-auto scroll-thin p-3 space-y-2"><p class="text-xs text-gray-600 text-center py-4">Belum ada sinyal terdeteksi</p></div>
+                </div>
+            </section>
+        </div>
+
+        <!-- PAGE 2: MY PORTO -->
+        <div id="page-porto" class="hidden space-y-4">
+            <div class="bg-[#0d1320] rounded-xl border border-gray-800 p-4">
+                <h2 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2"><svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>Tambah Aset ke Porto Saya</h2>
+                <div class="flex flex-wrap items-end gap-3">
+                    <div class="flex flex-col"><label class="text-xs text-gray-500 mb-1">Market</label><select id="portoMarketSelect" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-semibold"><option value="NASDAQ">NASDAQ</option><option value="IDX">IHSG (IDX)</option><option value="CRYPTO">CRYPTO</option></select></div>
+                    <div class="flex flex-col"><label class="text-xs text-gray-500 mb-1">Kode Aset</label><input type="text" id="portoSymbolInput" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 w-32 font-mono uppercase" placeholder="Misal: BBCA"></div>
+                    <div class="flex flex-col"><label class="text-xs text-gray-500 mb-1">Harga Beli (Rp/$)</label><input type="number" id="portoEntryPrice" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 w-32 font-mono" placeholder="0"></div>
+                    <div class="flex flex-col"><label class="text-xs text-gray-500 mb-1">Jumlah Lot/Koin</label><input type="number" id="portoLotSize" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 w-32 font-mono" placeholder="0"></div>
+                    <button id="addPortoBtn" class="bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-lg text-sm font-medium transition h-[38px]">Tambah</button>
+                    <button id="scanPortoBtn" class="bg-emerald-600 hover:bg-emerald-700 px-5 py-2 rounded-lg text-sm font-medium transition h-[38px] ml-auto">Scan Porto Saya</button>
+                </div>
+            </div>
+            <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-800/30"><h2 class="text-sm font-semibold text-gray-300">Daftar Aset & Sinyal Saat Ini</h2><span id="portoCount" class="text-xs text-gray-500">0 Aset</span></div>
+                <div class="overflow-x-auto scroll-thin"><table class="w-full text-xs"><thead class="bg-[#0d1320]"><tr class="text-gray-500 border-b border-gray-800"><th class="text-left px-4 py-3 font-medium">Kode & Market</th><th class="text-right px-4 py-3 font-medium">Harga Beli</th><th class="text-right px-4 py-3 font-medium">Harga Sekarang</th><th class="text-right px-4 py-3 font-medium">Profit / Loss</th><th class="text-left px-4 py-3 font-medium max-w-[250px]">Alasan & Bandar</th><th class="text-center px-4 py-3 font-medium">Saran Aksi</th><th class="text-center px-4 py-3 font-medium">Aksi</th></tr></thead><tbody id="portoBody"><tr><td colspan="7" class="text-center py-10 text-gray-600">Belum ada aset di portofolio.</td></tr></tbody></table></div>
+            </div>
+            <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden flex flex-col" style="max-height: 300px;">
+                <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800"><div class="flex items-center gap-2"><svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg><h2 class="text-sm font-semibold text-gray-300">Peringatan Porto Saya</h2></div></div>
+                <div id="portoSignalLog" class="flex-1 overflow-y-auto scroll-thin p-3 space-y-2"><p class="text-xs text-gray-600 text-center py-4">Belum ada peringatan</p></div>
+            </div>
+        </div>
+
+        <!-- PAGE 3: ASSISTANT -->
+        <div id="page-assistant" class="hidden flex flex-col" style="height: calc(100vh - 160px);">
+            <div class="bg-[#0d1320] rounded-xl border border-gray-800 flex flex-col flex-1 overflow-hidden">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-gray-800/30">
+                    <div class="flex items-center gap-2"><div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center font-bold text-white text-sm">L</div><div><h2 class="text-sm font-semibold text-gray-300">Lina Assistant</h2><p class="text-[10px] text-gray-500">Bertanya soal analisa <span id="assistSymbolLabel" class="text-blue-400 font-mono">AAPL</span> & unggah PDF</p></div></div>
+                </div>
+                <div id="chatBox" class="flex-1 overflow-y-auto scroll-thin p-4 flex flex-col gap-3">
+                    <div class="chat-ai p-3 rounded-lg max-w-[80%] text-sm fade-in">Halo! Aku Lina. Kamu bisa nanya soal grafik aset <span class="font-bold text-blue-400" id="chatSymInit">AAPL</span> yang lagi kebuka. Atau, kalau kamu punya laporan <strong>PDF</strong>, tinggal klik tombol 📎 di bawah atau <strong>drag & drop</strong> file PDF-nya ke sini.</div>
+                </div>
+                <div class="border-t border-gray-800 p-3 flex flex-col gap-2">
+                    <div id="dropZone" class="hidden text-center text-xs text-gray-400 border-dashed border-2 border-gray-600 rounded-lg p-4 transition mb-2">Tarik & lepas file PDF kamu di sini...</div>
+                    <div class="flex gap-2">
+                        <button id="attachBtn" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition" title="Unggah PDF">📎</button>
+                        <input type="file" id="pdfUpload" accept="application/pdf" class="hidden">
+                        <input type="text" id="chatInput" class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500" placeholder="Ketik pertanyaanmu...">
+                        <button id="sendChatBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition">Kirim</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE 4: PROFIL -->
+        <div id="page-profil" class="hidden space-y-4">
+            <div class="bg-[#0d1320] rounded-xl border border-gray-800 overflow-hidden">
+                <div class="flex flex-col md:flex-row items-center gap-6 p-6">
+                    <img id="profile-pic" src="https://ui-avatars.com/api/?background=0D8ABC&color=fff" class="w-24 h-24 rounded-full border-4 border-blue-500 shadow-lg" alt="User Photo">
+                    <div class="text-center md:text-left">
+                        <h2 id="profile-name" class="text-2xl font-bold text-white">Nama User</h2>
+                        <p id="profile-email" class="text-sm text-gray-500">Belum dikaitkan dengan Google</p>
+                        <div class="mt-3 flex gap-2 justify-center md:justify-start">
+                            <button id="link-google-btn" class="text-xs bg-blue-600/20 text-blue-400 border border-blue-700/50 px-3 py-1 rounded-lg hover:bg-blue-600/40 transition flex items-center gap-2">
+                                <svg class="w-4 h-4" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+                                Kaitkan Google
+                            </button>
+                            <button id="logout-btn" class="text-xs bg-red-600/20 text-red-400 border border-red-700/50 px-3 py-1 rounded-lg hover:bg-red-600/40 transition">Keluar (Logout)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 p-6 flex flex-col items-center justify-center">
+                    <p class="text-xs text-gray-500 uppercase mb-2">Total Modal</p>
+                    <h3 id="total-modal" class="text-2xl font-bold text-gray-200">$0</h3>
+                </div>
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 p-6 flex flex-col items-center justify-center">
+                    <p class="text-xs text-gray-500 uppercase mb-2">Nilai Porto Sekarang</p>
+                    <h3 id="total-current" class="text-2xl font-bold text-blue-400">$0</h3>
+                </div>
+                <div class="bg-[#0d1320] rounded-xl border border-gray-800 p-6 flex flex-col items-center justify-center">
+                    <p class="text-xs text-gray-500 uppercase mb-2">Total Profit / Loss</p>
+                    <h3 id="total-pnl" class="text-3xl font-bold text-green-400">+0%</h3>
+                </div>
+            </div>
+
+            <div class="bg-[#0d1320] rounded-xl border border-gray-800 p-4">
+                <h3 class="text-sm font-semibold text-gray-300 mb-3">Ringkasan Aset</h3>
+                <div id="profile-porto-summary" class="space-y-2">
+                    <p class="text-sm text-gray-600">Belum ada aset di portofolio. Pindah ke tab 'My Porto' untuk menambahkan.</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+    <footer class="text-center py-4 text-xs text-gray-600">
+        <p>Lina AI — Analisis Lindung Nilai | Pemula Friendly</p>
+        <p class="mt-1">Data: Yahoo Finance API | Chart: TradingView Widget | Bukan saran investasi</p>
+    </footer>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const SCREENER_SYMBOLS = [
+    { market: 'CRYPTO', unified: 'BTCUSD', name: 'Bitcoin' }, { market: 'CRYPTO', unified: 'ETHUSD', name: 'Ethereum' }, { market: 'CRYPTO', unified: 'BNBUSD', name: 'BNB' }, { market: 'CRYPTO', unified: 'SOLUSD', name: 'Solana' }, { market: 'CRYPTO', unified: 'XRPUSD', name: 'XRP' }, { market: 'CRYPTO', unified: 'DOGEUSD', name: 'Dogecoin' },
+    { market: 'NASDAQ', unified: 'AAPL', name: 'Apple' }, { market: 'NASDAQ', unified: 'TSLA', name: 'Tesla' }, { market: 'NASDAQ', unified: 'NVDA', name: 'NVIDIA' }, { market: 'NASDAQ', unified: 'AMZN', name: 'Amazon' }, { market: 'NASDAQ', unified: 'MSFT', name: 'Microsoft' }, { market: 'NASDAQ', unified: 'META', name: 'Meta' },
+    { market: 'IDX', unified: 'BBCA', name: 'Bank BCA' }, { market: 'IDX', unified: 'BBRI', name: 'Bank BRI' }, { market: 'IDX', unified: 'TLKM', name: 'Telkom' }, { market: 'IDX', unified: 'GOTO', name: 'GoTo' }, { market: 'IDX', unified: 'ASII', name: 'Astra' }, { market: 'IDX', unified: 'BMRI', name: 'Bank Mandiri' }
+];
+
+let currentTVSymbol = '', currentYahooSymbol = '', currentName = '';
+let currentSignal = null, currentProfile = null, currentNews = [];
+let yahooChart = null, candleSeries = null, ema50Series = null, ema200Series = null, bbUpperSeries = null, bbLowerSeries = null, volumeSeries = null;
+let lastSignals = {}, autoScanInterval = null, notificationsEnabled = false;
+let myPortfolio = JSON.parse(localStorage.getItem('linaMyPorto')) || []; 
+let currentUser = JSON.parse(localStorage.getItem('linaCurrentUser')) || null;
+
+// === AUTH LOGIC LOCAL ===
+function initAuth() {
+    if (currentUser && currentUser.name) {
+        enterApp();
+    }
+}
+
+function enterApp() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+    
+    document.getElementById('profile-name').textContent = currentUser.name;
+    document.getElementById('profile-pic').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=0D8ABC&color=fff`;
+    if (currentUser.googleLinked) {
+        document.getElementById('profile-email').textContent = currentUser.email;
+        document.getElementById('link-google-btn').innerHTML = '✓ Terhubung ke Google';
+        document.getElementById('link-google-btn').classList.add('opacity-50', 'pointer-events-none');
+    }
+    
+    initYahooChart(); 
+    loadFromInput(); 
+    setTimeout(runScreener, 3000); 
+    renderPorto();
+    updateProfileSummary();
+
+    if (!localStorage.getItem('linaTutorialDone')) {
+        startTutorial();
+    }
+}
+
+// === TUTORIAL LOGIC ===
+const tutorialSteps = [
+    { targetId: 'search-group', title: '1. Cari Aset', text: 'Pilih market (NASDAQ/IHSG/Crypto) lalu ketik kode saham (misal: AAPL) dan klik Cari.' },
+    { targetId: 'simpleSignalCard', title: '2. Baca Kesimpulan', text: 'Gak perlu pusing lihat angka. Lina AI bakal kasih saran HARUS BELI, TUNGGU, atau JUAL di kotak ini.' },
+    { targetId: 'navPorto', title: '3. My Porto', text: 'Pindah ke tab ini buat masukin daftar saham/crypto yang kamu pegang. Lina AI bakal pantau profit/loss-nya.' },
+    { targetId: 'navAssistant', title: '4. Lina Assistant', text: 'Kalau bingung sama istilah teknikal atau ada file PDF laporan saham, tanya aja ke Lina di sini.' },
+    { targetId: 'navProfil', title: '5. Profil', text: 'Cek total modal, nilai portofolio, dan untung/rugi keseluruhanmu di sini.' }
+];
+let currentTutStep = 0;
+
+function startTutorial() {
+    document.getElementById('tutorial-overlay').style.display = 'block';
+    showTutStep(0);
+}
+function showTutStep(step) {
+    if (step >= tutorialSteps.length) { endTutorial(); return; }
+    currentTutStep = step;
+    const s = tutorialSteps[step];
+    const el = document.getElementById(s.targetId);
+    if (!el) return showTutStep(step + 1);
+
+    const rect = el.getBoundingClientRect();
+    const highlight = document.getElementById('tut-highlight');
+    const box = document.getElementById('tut-box');
+    
+    highlight.style.top = (rect.top - 5) + 'px';
+    highlight.style.left = (rect.left - 5) + 'px';
+    highlight.style.width = (rect.width + 10) + 'px';
+    highlight.style.height = (rect.height + 10) + 'px';
+
+    document.getElementById('tut-title').textContent = s.title;
+    document.getElementById('tut-text').textContent = s.text;
+
+    let boxTop = rect.bottom + 15;
+    let boxLeft = rect.left;
+    if (boxLeft + 320 > window.innerWidth) boxLeft = window.innerWidth - 330;
+    if (boxTop + 200 > window.innerHeight) boxTop = rect.top - 220;
+
+    box.style.top = boxTop + 'px';
+    box.style.left = boxLeft + 'px';
+    
+    document.getElementById('tut-next').textContent = (step === tutorialSteps.length - 1) ? 'Selesai' : 'Lanjut';
+}
+function endTutorial() {
+    document.getElementById('tutorial-overlay').style.display = 'none';
+    localStorage.setItem('linaTutorialDone', 'true');
+}
+
+document.getElementById('tut-next').addEventListener('click', () => showTutStep(currentTutStep + 1));
+document.getElementById('tut-skip').addEventListener('click', endTutorial);
+
+// === SISA LOGIKA APP ===
+function mapSymbol(market, unified) { let sym = unified.toUpperCase().replace('.JK', '').replace('=X', ''); let tv = '', yahoo = ''; if (market === 'NASDAQ') { tv = `NASDAQ:${sym}`; yahoo = sym; } else if (market === 'IDX') { tv = `IDX:${sym}`; yahoo = `${sym}.JK`; } else if (market === 'CRYPTO') { let coin = sym.replace(/(USDT|BUSD|USD)$/, ''); tv = `BINANCE:${coin}USDT`; yahoo = `${coin}-USD`; } else { tv = `NASDAQ:${sym}`; yahoo = sym; } return { tv, yahoo, name: sym }; }
+async function fetchWithTimeout(url, ms = 8000) { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), ms); try { const res = await fetch(url, { signal: controller.signal }); clearTimeout(timeout); return res; } catch (err) { clearTimeout(timeout); throw err; } }
+async function fetchYahooData(symbol, interval = '1d', range = '1y') { const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`; const proxies = [`https://corsproxy.io/?url=${encodeURIComponent(url)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`]; for (const p of proxies) { try { const r = await fetchWithTimeout(p, 8000); if (!r.ok) continue; const j = await r.json(); if (!j.chart || !j.chart.result || !j.chart.result[0]) continue; const res = j.chart.result[0], t = res.timestamp || [], q = res.indicators.quote[0], c = []; for (let i = 0; i < t.length; i++) { if (q.open[i] == null || q.close[i] == null) continue; c.push({ time: t[i], open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] || 0 }); } return { candles: c }; } catch (e) {} } throw new Error(`Gagal fetch ${symbol}`); }
+async function fetchProfileAndNews(yahooSymbol, tvSymbol) { try { const pUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${yahooSymbol}?modules=assetProfile`; const pRes = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(pUrl)}`); const pJson = await pRes.json(); currentProfile = pJson.quoteSummary.result[0].assetProfile; document.getElementById('profileBox').innerHTML = `<p><strong class="text-gray-200">Sektor:</strong> ${currentProfile.sector || 'N/A'}</p><p><strong class="text-gray-200">Industri:</strong> ${currentProfile.industry || 'N/A'}</p><p><strong class="text-gray-200">Ringkasan Bisnis:</strong> ${(currentProfile.longBusinessSummary || 'Tidak ada data ringkasan.').substring(0, 300)}...</p>`; } catch (e) { document.getElementById('profileBox').innerHTML = '<p class="text-gray-500">Profil tidak tersedia.</p>'; } try { const nUrl = `https://news.google.com/rss/search?q=${yahooSymbol}+OR+${tvSymbol.split(':')[1]}+saham+stock&hl=id&gl=ID&ceid=ID:id`; const nRes = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(nUrl)}`); const nText = await nRes.text(); const parser = new DOMParser(); const xml = parser.parseFromString(nText, "text/xml"); const items = xml.querySelectorAll("item"); currentNews = []; let newsHtml = ''; for (let i = 0; i < Math.min(5, items.length); i++) { const title = items[i].querySelector("title").textContent; const link = items[i].querySelector("link").textContent; const pubDate = new Date(items[i].querySelector("pubDate").textContent).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }); newsHtml += `<a href="${link}" target="_blank" class="block hover:bg-gray-800/50 p-2 rounded-lg border-b border-gray-800/50 transition"><div class="text-xs text-gray-300 font-medium">${title}</div><div class="text-[10px] text-gray-500 mt-1">${pubDate}</div></a>`; currentNews.push({ title, link, pubDate }); } document.getElementById('newsBox').innerHTML = newsHtml || '<p class="text-gray-500">Tidak ada berita terbaru.</p>'; } catch (e) { document.getElementById('newsBox').innerHTML = '<p class="text-gray-500">Gagal memuat berita.</p>'; } }
+function calculateSMA(d, p) { const r = new Array(d.length).fill(null); for (let i=p-1;i<d.length;i++){let s=0;for(let j=0;j<p;j++)s+=d[i-j];r[i]=s/p;} return r; }
+function calculateEMA(d, p) { const r = new Array(d.length).fill(null); const m = 2/(p+1); let e=null; for(let i=0;i<d.length;i++){if(i<p-1)continue;else if(i===p-1){let s=0;for(let j=0;j<p;j++)s+=d[i-j];e=s/p;r[i]=e;}else{e=(d[i]-e)*m+e;r[i]=e;}} return r; }
+function calculateRSI(d, p=14) { const r = new Array(d.length).fill(null); let ag=0,al=0; for(let i=1;i<d.length;i++){const c=d[i]-d[i-1];const g=c>0?c:0,l=c<0?Math.abs(c):0;if(i<=p){ag+=g;al+=l;if(i===p){ag/=p;al/=p;r[i]=100-(100/(1+(al===0?100:ag/al)));}}else{ag=(ag*(p-1)+g)/p;al=(al*(p-1)+l)/p;r[i]=100-(100/(1+(al===0?100:ag/al)));}} return r; }
+function calculateMACD(d, f=12, s=26, sig=9) { const ef=calculateEMA(d,f),es=calculateEMA(d,s); const ml=d.map((_,i)=>(ef[i]!==null&&es[i]!==null)?ef[i]-es[i]:null); const vs=ml.findIndex(v=>v!==null); const mv=ml.slice(vs),sv=calculateEMA(mv,sig); const sl=new Array(d.length).fill(null); for(let i=0;i<sv.length;i++)if(sv[i]!==null)sl[vs+i]=sv[i]; const h=d.map((_,i)=>(ml[i]!==null&&sl[i]!==null)?ml[i]-sl[i]:null); return {macdLine:ml,signalLine:sl,histogram:h}; }
+function calculateBB(d, p=20, dev=2) { const m=calculateSMA(d,p); const u=new Array(d.length).fill(null),l=new Array(d.length).fill(null); for(let i=p-1;i<d.length;i++){if(m[i]===null)continue;let sq=0;for(let j=0;j<p;j++)sq+=Math.pow(d[i-j]-m[i],2);const sd=Math.sqrt(sq/p);u[i]=m[i]+dev*sd;l[i]=m[i]-dev*sd;} return {middle:m,upper:u,lower:l}; }
+function generateSimpleSignal(c, ind) { const li = c.length - 1, cl = c[li].close; const e50 = ind.ema50[li], e200 = ind.ema200[li], rsi = ind.rsi[li]; const mv = ind.macd.macdLine[li], sv = ind.macd.signalLine[li], hv = ind.macd.histogram[li]; const u = ind.bb.upper[li], l = ind.bb.lower[li], m = ind.bb.middle[li]; let sc = 0, rs = []; let trendText = "Tren belum jelas."; if (e50 !== null && e200 !== null) { if (e50 > e200) { sc += 2; trendText = "Lagi naik (Uptrend)."; rs.push("✅ Tren naik"); } else { sc -= 2; trendText = "Lagi turun (Downtrend)."; rs.push("❌ Tren turun"); } } let rsiText = "Harga masih wajar."; if (rsi !== null) { if (rsi < 30) { sc += 2; rsiText = "Harga lagi murah banget (Oversold)."; rs.push("✅ Harga murah"); } else if (rsi > 70) { sc -= 2; rsiText = "Harga lagi mahal (Overbought)."; rs.push("❌ Harga mahal"); } else if (rsi < 45) { sc += 1; rsiText = "Harga mulai murah."; } else if (rsi > 55) { sc -= 1; rsiText = "Harga mulai mahal."; } } let macdText = "Tenaga market seimbang."; if (mv !== null && sv !== null) { if (mv > sv && hv > 0) { sc += 2; macdText = "Pembeli lagi kuat."; rs.push("✅ Pembeli kuat"); } else if (mv < sv && hv < 0) { sc -= 2; macdText = "Penjual lagi kuat."; rs.push("❌ Penjual kuat"); } } let bbText = "Harga di jalur normal."; if (u !== null && l !== null) { if (cl < l) { sc += 1; bbText = "Harga nabrak batas bawah."; rs.push("✅ Mantul bawah"); } else if (cl > u) { sc -= 1; bbText = "Harga nabrak batas atas."; rs.push("❌ Mantul atas"); } } const volumes = c.map(x => x.volume); const closes = c.map(x => x.close); const values = closes.map((price, i) => price * volumes[i]); let sumVal = 0, countVal = 0; for (let i = Math.max(0, li - 20); i < li; i++) { sumVal += values[i]; countVal++; } const avgVal = countVal > 0 ? sumVal / countVal : 0; const currentVal = values[li]; const valUp = currentVal > (avgVal * 1.5); const lookbackIdx = Math.max(0, li - 5); const priceChangePct = ((closes[li] - closes[lookbackIdx]) / closes[lookbackIdx]) * 100; let bandarText = "Pergerakan ritel biasa.", bandarEmoji = "👥"; if (valUp) { if (priceChangePct > 2) { bandarText = "Bandar masuk! Big money beli."; bandarEmoji = "🐋"; sc += 2; rs.push("✅ Bandar masuk"); } else if (priceChangePct < -2) { bandarText = "Bandar buang barang! (Distribusi)."; bandarEmoji = "🐙"; sc -= 2; rs.push("❌ Bandar distribusi"); } else { bandarText = "Bandar nampung barang diam-diam."; bandarEmoji = "🐊"; sc += 1; rs.push("⬆️ Bandar akumulasi"); } } let sig, ic, cn, simpleText; if (sc >= 5) { sig = "STRONG BUY"; ic = "🟢"; cn = "signal-strong-buy"; simpleText = "STRONG BUY! (Beli Kuat)"; } else if (sc >= 2) { sig = "BUY"; ic = "🟩"; cn = "signal-buy"; simpleText = "BUY (Boleh Beli)"; } else if (sc > -2) { sig = "HOLD"; ic = "⚪"; cn = "signal-hold"; simpleText = "HOLD (Tunggu)"; } else if (sc > -5) { sig = "SELL"; ic = "🟥"; cn = "signal-sell"; simpleText = "SELL (Jual)"; } else { sig = "STRONG SELL"; ic = "🔴"; cn = "signal-strong-sell"; simpleText = "STRONG SELL! (Jual Segera)"; } return { signal: sig, simpleText, icon: ic, className: cn, score: sc, reasons: rs, trendText, rsiText, macdText, bbText, bandarText, bandarEmoji, close: cl, rsiVal: rsi }; }
+function loadTradingViewChart(symbol, interval) { document.getElementById('tvSymbolLabel').textContent = symbol; const c = document.getElementById('tradingview-chart'); c.innerHTML = ''; const w = document.createElement('div'); w.className = 'tradingview-widget-container'; w.style.height = '100%'; w.style.width = '100%'; const d = document.createElement('div'); d.className = 'tradingview-widget-container__widget'; d.style.height = '100%'; d.style.width = '100%'; d.style.position = 'absolute'; w.appendChild(d); const s = document.createElement('script'); s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js'; s.async = true; s.innerHTML = JSON.stringify({ autosize: true, symbol, interval, timezone: "Asia/Jakarta", theme: "dark", style: "1", locale: "id", enable_publishing: false, hide_side_toolbar: false, allow_symbol_change: true, studies: ["STD;EMA", "STD;EMA", "STD;RSI", "STD;MACD", "STD;Bollinger_Bands"], studies_overrides: { "0.length": 50, "0.Plot.color": "#3b82f6", "1.length": 200, "1.Plot.color": "#ef4444" } }); w.appendChild(s); c.appendChild(w); }
+function initYahooChart() { const c = document.getElementById('yahooChart'); if (yahooChart) yahooChart.remove(); yahooChart = LightweightCharts.createChart(c, { width: c.clientWidth, height: c.clientHeight, layout: { background: { color: '#0d1320' }, textColor: '#9ca3af', fontSize: 10 }, grid: { vertLines: { color: 'rgba(55,65,81,0.3)' }, horzLines: { color: 'rgba(55,65,81,0.3)' } }, rightPriceScale: { borderColor: 'rgba(55,65,81,0.5)', scaleMargins: { top: 0.05, bottom: 0.25 } }, timeScale: { borderColor: 'rgba(55,65,81,0.5)', timeVisible: true } }); candleSeries = yahooChart.addCandlestickSeries({ upColor: '#22c55e', downColor: '#ef4444' }); ema50Series = yahooChart.addLineSeries({ color: '#3b82f6', lineWidth: 2 }); ema200Series = yahooChart.addLineSeries({ color: '#ef4444', lineWidth: 2 }); bbUpperSeries = yahooChart.addLineSeries({ color: 'rgba(156,163,175,0.5)', lineWidth: 1, lineStyle: 2 }); bbLowerSeries = yahooChart.addLineSeries({ color: 'rgba(156,163,175,0.5)', lineWidth: 1, lineStyle: 2 }); volumeSeries = yahooChart.addHistogramSeries({ color: 'rgba(75,85,99,0.5)', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.8, bottom: 0 } }); new ResizeObserver(() => { if (yahooChart && c.clientWidth > 0) yahooChart.applyOptions({ width: c.clientWidth, height: c.clientHeight }); }).observe(c); }
+function updateYahooChart(candles, ind) { if (!candleSeries) return; candleSeries.setData(candles.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }))); volumeSeries.setData(candles.map(c => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)' }))); const mapD = (arr) => candles.map((c, i) => arr[i] !== null ? { time: c.time, value: arr[i] } : null).filter(v => v !== null); ema50Series.setData(mapD(ind.ema50)); ema200Series.setData(mapD(ind.ema200)); bbUpperSeries.setData(mapD(ind.bb.upper)); bbLowerSeries.setData(mapD(ind.bb.lower)); yahooChart.timeScale().fitContent(); }
+function updateAnalysisPanel(candles, ind, sig) { const sC = document.getElementById('simpleSignalCard'); sC.className = `${sig.className} rounded-xl p-3 text-center transition-all duration-300`; document.getElementById('simpleSignalIcon').textContent = sig.icon; document.getElementById('simpleSignalText').textContent = sig.simpleText; document.getElementById('simpleSignalScore').textContent = `Skor: ${sig.score}/10`; document.getElementById('bandarSimple').textContent = sig.bandarText; document.getElementById('bandarEmoji').textContent = sig.bandarEmoji; document.getElementById('trendSimple').textContent = sig.trendText; document.getElementById('rsiSimple').textContent = sig.rsiText; document.getElementById('macdSimple').textContent = sig.macdText; document.getElementById('bbSimple').textContent = sig.bbText; currentSignal = sig; }
+async function loadFromInput() { const market = document.getElementById('marketSelect').value; const val = document.getElementById('symbolInput').value.trim().toUpperCase(); if (!val) return; const mapped = mapSymbol(market, val); currentTVSymbol = mapped.tv; currentYahooSymbol = mapped.yahoo; currentName = mapped.name; let interval = document.getElementById('intervalSelect').value; if (market === 'IDX' && ['15', '60', '240'].includes(interval)) { interval = 'D'; document.getElementById('intervalSelect').value = 'D'; } document.getElementById('tvSymbolLabel').textContent = currentTVSymbol; document.getElementById('assistSymbolLabel').textContent = currentName; document.getElementById('chatSymInit').textContent = currentName; loadTradingViewChart(currentTVSymbol, interval); loadAnalysis(); fetchProfileAndNews(currentYahooSymbol, currentTVSymbol); }
+async function loadAnalysis() { const l = document.getElementById('chartLoading'); l.style.display = 'flex'; l.innerHTML = `<div class="text-center"><div class="inline-block w-8 h-8 border-2 border-gray-700 border-t-blue-500 rounded-full animate-spin mb-2"></div><p class="text-xs text-gray-500">Memuat data...</p></div>`; try { const range = document.getElementById('rangeSelect').value; const { candles } = await fetchYahooData(currentYahooSymbol, '1d', range); if (candles.length < 30) throw new Error('Data tidak cukup'); const closes = candles.map(c => c.close); const ind = { ema50: calculateEMA(closes, 50), ema200: calculateEMA(closes, 200), rsi: calculateRSI(closes, 14), macd: calculateMACD(closes, 12, 26, 9), bb: calculateBB(closes, 20, 2) }; const sig = generateSimpleSignal(candles, ind); updateYahooChart(candles, ind); updateAnalysisPanel(candles, ind, sig); l.style.display = 'none'; } catch (e) { l.innerHTML = `<div class="text-center"><p class="text-xs text-red-400">Gagal memuat</p><p class="text-xs text-gray-500 mt-1">${e.message}</p></div>`; } }
+
+async function runScreener() { const btn = document.getElementById('screenerScanBtn'); btn.disabled = true; btn.innerHTML = `<div class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>`; document.getElementById('screenerCount').textContent = "0%"; ['screenerBodyCrypto', 'screenerBodyUS', 'screenerBodyIDX'].forEach(id => { document.getElementById(id).innerHTML = `<tr><td colspan="2" class="text-center py-6 text-gray-500">Scanning...</td></tr>`; }); const results = []; let cp = 0; const totalSymbols = SCREENER_SYMBOLS.length; try { for (let i = 0; i < totalSymbols; i += 9) { const batch = SCREENER_SYMBOLS.slice(i, i + 9); const br = await Promise.allSettled(batch.map(async (sym) => { const mapped = mapSymbol(sym.market, sym.unified); const { candles } = await fetchYahooData(mapped.yahoo, '1d', '1y'); if (candles.length < 30) throw new Error('Data kurang'); const closes = candles.map(c => c.close); const ind = { ema50: calculateEMA(closes, 50), ema200: calculateEMA(closes, 200), rsi: calculateRSI(closes, 14), macd: calculateMACD(closes, 12, 26, 9), bb: calculateBB(closes, 20, 2) }; const sig = generateSimpleSignal(candles, ind); return { unified: sym.unified, name: sym.name, market: sym.market, signal: sig }; })); br.forEach(r => { if (r.status === 'fulfilled') results.push(r.value); cp++; document.getElementById('screenerCount').textContent = `(${cp}/${totalSymbols})`; }); } renderScreenerTables(results); checkForNewSignals(results); } catch (err) { console.error("Scan Error:", err); } finally { btn.disabled = false; btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Scan`; document.getElementById('screenerCount').textContent = `${results.length} aset`; } }
+function renderScreenerTables(results) { renderColumn('screenerBodyCrypto', results.filter(r => r.market === 'CRYPTO')); renderColumn('screenerBodyUS', results.filter(r => r.market === 'NASDAQ')); renderColumn('screenerBodyIDX', results.filter(r => r.market === 'IDX')); }
+function renderColumn(elId, results) { const bd = document.getElementById(elId); if (results.length === 0) { bd.innerHTML = `<tr><td colspan="2" class="text-center py-6 text-gray-600">Tidak ada data</td></tr>`; return; } results.sort((a, b) => b.signal.score - a.signal.score); bd.innerHTML = results.map(r => { const s = r.signal; let sB; if (s.score >= 5) sB = '<span class="px-2 py-0.5 rounded bg-green-600 text-white font-bold text-[9px]">S.BUY</span>'; else if (s.score >= 2) sB = '<span class="px-2 py-0.5 rounded bg-green-700/50 text-green-400 font-semibold text-[9px]">BUY</span>'; else if (s.score > -2) sB = '<span class="px-2 py-0.5 rounded bg-gray-700 text-gray-400 text-[9px]">HOLD</span>'; else if (s.score > -5) sB = '<span class="px-2 py-0.5 rounded bg-red-700/50 text-red-400 font-semibold text-[9px]">SELL</span>'; else sB = '<span class="px-2 py-0.5 rounded bg-red-600 text-white font-bold text-[9px]">S.SELL</span>'; const reasonsHtml = s.reasons.slice(0, 3).map(rsn => `<span class="text-[10px] text-gray-500 block">${rsn}</span>`).join(''); return `<tr class="border-b border-gray-800/30 hover:bg-gray-800/30 cursor-pointer fade-in" onclick="loadSymbolFromScreener('${r.market}', '${r.unified}')"><td class="px-3 py-2"><div class="font-semibold text-gray-200">${r.unified}</div><div class="text-[10px] text-gray-500 mb-1">${r.name}</div>${reasonsHtml}</td><td class="px-3 py-2 text-center align-middle">${sB}</td></tr>`; }).join(''); }
+function savePorto() { localStorage.setItem('linaMyPorto', JSON.stringify(myPortfolio)); }
+function addPorto() { const market = document.getElementById('portoMarketSelect').value; const sym = document.getElementById('portoSymbolInput').value.trim().toUpperCase(); const entry = parseFloat(document.getElementById('portoEntryPrice').value); const lot = parseFloat(document.getElementById('portoLotSize').value); if (!sym || !entry || !lot) { alert('Lengkapi semua kolom!'); return; } if (myPortfolio.some(p => p.market === market && p.unified === sym)) { alert('Aset ini sudah ada di portofolio kamu.'); return; } myPortfolio.push({ market, unified: sym, entry, lot }); savePorto(); document.getElementById('portoSymbolInput').value = ''; document.getElementById('portoEntryPrice').value = ''; document.getElementById('portoLotSize').value = ''; renderPorto(); alert('Aset berhasil ditambahkan!'); }
+function removePorto(market, unified) { myPortfolio = myPortfolio.filter(p => !(p.market === market && p.unified === unified)); savePorto(); renderPorto(); updateProfileSummary(); }
+function renderPorto() { const bd = document.getElementById('portoBody'); document.getElementById('portoCount').textContent = `${myPortfolio.length} Aset`; if (myPortfolio.length === 0) { bd.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-600">Belum ada aset di portofolio. Tambahkan dulu yuk!</td></tr>`; return; } bd.innerHTML = myPortfolio.map(p => { return `<tr class="border-b border-gray-800/30 fade-in" id="row-${p.market}-${p.unified}"><td class="px-4 py-3"><div class="font-semibold text-gray-200">${p.unified}</div><div class="text-[10px] text-gray-500">${p.market}</div></td><td class="px-4 py-3 text-right font-mono text-gray-300">${p.entry.toLocaleString()}</td><td class="px-4 py-3 text-right font-mono text-gray-300" id="price-${p.market}-${p.unified}">Loading...</td><td class="px-4 py-3 text-right font-mono" id="pnl-${p.market}-${p.unified}">—</td><td class="px-4 py-3 text-left max-w-[250px]" id="reason-${p.market}-${p.unified}"><span class="text-[10px] text-gray-600">Menunggu scan...</span></td><td class="px-4 py-3 text-center" id="signal-${p.market}-${p.unified}"><span class="text-[10px] text-gray-600">—</span></td><td class="px-4 py-3 text-center"><button onclick="removePorto('${p.market}', '${p.unified}')" class="text-red-500 hover:text-red-400 text-xs">Hapus</button></td></tr>`; }).join(''); }
+async function scanPorto() { if (myPortfolio.length === 0) { alert('Portofolio masih kosong!'); return; } const btn = document.getElementById('scanPortoBtn'); btn.disabled = true; btn.innerHTML = `<div class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Scanning...`; const results = []; let cp = 0; const totalAssets = myPortfolio.length; try { for (let i = 0; i < totalAssets; i += 9) { const batch = myPortfolio.slice(i, i + 9); const br = await Promise.allSettled(batch.map(async (p) => { const mapped = mapSymbol(p.market, p.unified); const { candles } = await fetchYahooData(mapped.yahoo, '1d', '1y'); if (candles.length < 30) throw new Error('Data kurang'); const closes = candles.map(c => c.close); const ind = { ema50: calculateEMA(closes, 50), ema200: calculateEMA(closes, 200), rsi: calculateRSI(closes, 14), macd: calculateMACD(closes, 12, 26, 9), bb: calculateBB(closes, 20, 2) }; const sig = generateSimpleSignal(candles, ind); return { ...p, signal: sig, currentPrice: candles[candles.length - 1].close }; })); br.forEach(r => { if (r.status === 'fulfilled') { const p = r.value; const pnl = ((p.currentPrice - p.entry) / p.entry) * 100; document.getElementById(`price-${p.market}-${p.unified}`).textContent = p.currentPrice.toLocaleString(); const pnlEl = document.getElementById(`pnl-${p.market}-${p.unified}`); pnlEl.textContent = `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%`; pnlEl.className = `px-4 py-3 text-right font-mono ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`; const reasonsHtml = p.signal.reasons.slice(0, 3).map(rs => `<span class="text-[10px] block">${rs}</span>`).join(''); document.getElementById(`reason-${p.market}-${p.unified}`).innerHTML = reasonsHtml; let sB; if (p.signal.score >= 5) sB = '<span class="px-2 py-0.5 rounded bg-green-600 text-white font-bold text-[9px]">S.BUY</span>'; else if (p.signal.score >= 2) sB = '<span class="px-2 py-0.5 rounded bg-green-700/50 text-green-400 font-semibold text-[9px]">BUY</span>'; else if (p.signal.score > -2) sB = '<span class="px-2 py-0.5 rounded bg-gray-700 text-gray-400 text-[9px]">HOLD</span>'; else if (p.signal.score > -5) sB = '<span class="px-2 py-0.5 rounded bg-red-700/50 text-red-400 font-semibold text-[9px]">SELL</span>'; else sB = '<span class="px-2 py-0.5 rounded bg-red-600 text-white font-bold text-[9px]">S.SELL</span>'; document.getElementById(`signal-${p.market}-${p.unified}`).innerHTML = sB; results.push(p); } cp++; }); } checkPortoSignals(results); updateProfileSummary(results); } catch (err) { console.error("Porto Scan Error:", err); } finally { btn.disabled = false; btn.innerHTML = 'Scan Porto Saya'; } }
+
+function updateProfileSummary(scanResults = []) {
+    if (myPortfolio.length === 0) {
+        document.getElementById('total-modal').textContent = '$0';
+        document.getElementById('total-current').textContent = '$0';
+        document.getElementById('total-pnl').textContent = '+0%';
+        document.getElementById('total-pnl').className = 'text-3xl font-bold text-green-400';
+        document.getElementById('profile-porto-summary').innerHTML = '<p class="text-sm text-gray-600">Belum ada aset di portofolio.</p>';
+        return;
+    }
+    let totalModal = 0, totalCurrent = 0;
+    let summaryHtml = '';
+    
+    myPortfolio.forEach(p => {
+        let currentPrice = p.currentPrice || p.entry; 
+        const scanData = scanResults.find(r => r.unified === p.unified && r.market === p.market);
+        if (scanData) currentPrice = scanData.currentPrice;
+        
+        const modal = p.entry * p.lot;
+        const current = currentPrice * p.lot;
+        const pnl = current - modal;
+        const pnlPct = (pnl / modal) * 100;
+        
+        totalModal += modal;
+        totalCurrent += current;
+        
+        summaryHtml += `<div class="flex justify-between items-center py-2 border-b border-gray-800/50">
+            <div><span class="font-medium text-gray-200">${p.unified}</span> <span class="text-[10px] text-gray-500">(${p.market})</span></div>
+            <div class="text-right"><span class="text-xs text-gray-400">${p.lot} Lot</span> <span class="font-mono ${pnl >= 0 ? 'text-green-400' : 'text-red-400'} text-sm">${pnlPct.toFixed(2)}%</span></div>
+        </div>`;
+    });
+    
+    const totalPnl = totalCurrent - totalModal;
+    const totalPnlPct = (totalPnl / totalModal) * 100;
+    
+    document.getElementById('total-modal').textContent = '$' + totalModal.toLocaleString();
+    document.getElementById('total-current').textContent = '$' + totalCurrent.toLocaleString();
+    document.getElementById('total-pnl').textContent = (totalPnl >= 0 ? '+' : '') + totalPnlPct.toFixed(2) + '%';
+    document.getElementById('total-pnl').className = `text-3xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+    document.getElementById('profile-porto-summary').innerHTML = summaryHtml;
+}
+
+function checkForNewSignals(results) { const t = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }); results.forEach(r => { const mapped = mapSymbol(r.market, r.unified); const k = mapped.yahoo, p = lastSignals[k], c = r.signal.signal; if (!p || p.signal !== c) { if (c.includes('BUY') || c.includes('SELL')) { addSignalLog(r, t, !p ? 'NEW' : 'CHANGED'); if (notificationsEnabled && (!p || p.signal !== c)) sendNotification(r, c); } } lastSignals[k] = { signal: c, score: r.signal.score }; }); }
+function addSignalLog(r, t, ty) { const lg = document.getElementById('signalLog'); if (lg.querySelector('p')) lg.innerHTML = ''; const s = r.signal, ib = s.signal.includes('BUY'); const bg = ib ? 'bg-green-900/20 border-green-700/30' : 'bg-red-900/20 border-red-700/30'; const tc = ib ? 'text-green-400' : 'text-red-400'; const e = document.createElement('div'); e.className = `${bg} border rounded-lg p-2.5 fade-in`; e.innerHTML = `<div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><span class="text-sm">${s.icon}</span><span class="font-semibold text-xs ${tc}">${s.simpleText}</span><span class="text-xs text-gray-400 font-mono">${r.unified}</span>${ty === 'NEW' ? '<span class="text-[9px] px-1 py-0.5 rounded bg-blue-900/50 text-blue-400">NEW</span>' : '<span class="text-[9px] px-1 py-0.5 rounded bg-yellow-900/50 text-yellow-400">CHANGED</span>'}</div><span class="text-[10px] text-gray-500">${t}</span></div><div class="text-[10px] text-gray-500 space-y-0.5"><div>${s.reasons.slice(0, 2).join(' • ')}</div></div>`; lg.prepend(e); while (lg.querySelectorAll('div.border').length > 50) lg.lastChild.remove(); playAlertSound(ib); }
+function checkPortoSignals(results) { const log = document.getElementById('portoSignalLog'); if (log.querySelector('p')) log.innerHTML = ''; const t = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }); results.forEach(r => { const s = r.signal; const k = r.unified, p = lastSignals['porto_'+k], c = s.signal; if (!p || p.signal !== c) { if (c.includes('BUY') || c.includes('SELL')) { const ib = c.includes('BUY'); const bg = ib ? 'bg-green-900/20 border-green-700/30' : 'bg-red-900/20 border-red-700/30'; const tc = ib ? 'text-green-400' : 'text-red-400'; const e = document.createElement('div'); e.className = `${bg} border rounded-lg p-2.5 fade-in`; e.innerHTML = `<div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><span class="text-sm">${s.icon}</span><span class="font-semibold text-xs ${tc}">${s.simpleText}</span><span class="text-xs text-gray-400 font-mono">${r.unified}</span></div><span class="text-[10px] text-gray-500">${t}</span></div><div class="text-[10px] text-gray-500 space-y-0.5"><div>${s.reasons.slice(0, 2).join(' • ')}</div></div>`; log.prepend(e); while (log.querySelectorAll('div.border').length > 50) log.lastChild.remove(); if (notificationsEnabled) { new Notification('🚨 Peringatan Porto!', { body: `${r.unified} → ${s.simpleText}\n${s.reasons.slice(0, 2).join(' • ')}`, tag: 'porto_'+r.unified }); } playAlertSound(ib); } } lastSignals['porto_'+k] = { signal: c, score: s.score }; }); }
+function generatePDF() { if (!currentSignal) { alert('Tunggu data analisa selesai dimuat dulu.'); return; } const sig = currentSignal; const profileText = currentProfile ? `<p><strong>Sektor:</strong> ${currentProfile.sector || 'N/A'}</p><p><strong>Industri:</strong> ${currentProfile.industry || 'N/A'}</p><p>${currentProfile.longBusinessSummary || ''}</p>` : '<p>Profil tidak tersedia.</p>'; let newsHtml = ''; if (currentNews.length > 0) { currentNews.forEach(n => { newsHtml += `<li><a href="${n.link}">${n.title}</a> (${n.pubDate})</li>`; }); } else { newsHtml = '<li>Tidak ada berita.</li>'; } let chartImgHtml = ''; const chartCanvas = document.querySelector('#yahooChart canvas'); if (chartCanvas) { const imgData = chartCanvas.toDataURL('image/png'); chartImgHtml = `<div style="margin: 20px 0; text-align: center;"><img src="${imgData}" style="max-width: 100%; border: 1px solid #ccc; border-radius: 8px;" /></div>`; } const html = `<div style="font-family: Arial, sans-serif; color: #333; padding: 20px;"><h1 style="color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 10px;">Laporan Analisis ${currentName} (${currentTVSymbol})</h1><p style="font-size: 12px; color: #666;">Tanggal Laporan: ${new Date().toLocaleString('id-ID')}</p><div style="margin-top: 20px; padding: 15px; background: ${sig.score >= 5 ? '#dcfce7' : sig.score <= -5 ? '#fee2e2' : '#f3f4f6'}; border-radius: 8px; border: 1px solid #ccc;"><h2 style="margin: 0 0 10px 0;">Saran Lina AI: ${sig.simpleText}</h2><p style="margin: 0;">Skor Teknikal: ${sig.score}/10</p><p style="margin: 5px 0 0 0;">Harga Saat Ini: ${sig.close}</p></div>${chartImgHtml}<div style="margin-top: 20px;"><h3 style="color: #1e3a8a;">Analisa Bandar (Value):</h3><p>${sig.bandarText}</p></div><div style="margin-top: 20px;"><h3 style="color: #1e3a8a;">Indikator Teknikal:</h3><ul style="list-style: none; padding: 0;"><li style="margin-bottom: 8px;"><strong>📈 Tren (EMA):</strong> ${sig.trendText}</li><li style="margin-bottom: 8px;"><strong>⚖️ RSI:</strong> ${sig.rsiText}</li><li style="margin-bottom: 8px;"><strong>⚡ MACD:</strong> ${sig.macdText}</li><li style="margin-bottom: 8px;"><strong>🎯 Bollinger Bands:</strong> ${sig.bbText}</li></ul></div><div style="margin-top: 20px; page-break-inside: avoid;"><h3 style="color: #1e3a8a;">Profil Perusahaan:</h3>${profileText}</div><div style="margin-top: 20px; page-break-inside: avoid;"><h3 style="color: #1e3a8a;">Berita Terkait:</h3><ul>${newsHtml}</ul></div><div style="margin-top: 40px; font-size: 10px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 10px;"><p>Laporan ini dihasilkan oleh Lina AI. Bukan saran investasi resmi. Selalu lakukan riset mandiri.</p></div></div>`; const container = document.getElementById('pdf-report'); container.innerHTML = html; container.classList.remove('hidden'); const opt = { margin: 1, filename: `LinaAI_Report_${currentName}_${new Date().toLocaleDateString('id-ID').replace(/\//g, '-')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } }; html2pdf().set(opt).from(container).save().then(() => { container.classList.add('hidden'); }); }
+function addChatMessage(role, text) { const box = document.getElementById('chatBox'); const div = document.createElement('div'); div.className = `${role === 'user' ? 'chat-user' : 'chat-ai'} p-3 rounded-lg max-w-[80%] text-sm fade-in`; div.innerHTML = text; box.appendChild(div); box.scrollTop = box.scrollHeight; }
+function getLinaResponse(text) { if (!currentSignal) return "Aku lagi ngambil data nih, tunggu bentar ya sebelum nanya."; const t = text.toLowerCase(); const s = currentSignal; if (t.includes('rsi') || t.includes('jenuh') || t.includes('mahal') || t.includes('murah')) return `Saat ini nilai RSI ${currentName} ada di ${s.rsiVal.toFixed(1)}. ${s.rsiText} Intinya, kalau di atas 70 itu artinya harga udah mahal banget (banyak yang panik takut jatuh), kalau di bawah 30 itu murah banget (tapi bisa aja makin murah).`; if (t.includes('macd') || t.includes('tenaga') || t.includes('momentum')) return `Untuk tenaga market (MACD), ${s.macdText} Kalau pembeli kuat, harga biasanya bakal dorong naik. Kalau penjual kuat, harga bakal tertekan turun.`; if (t.includes('bandar') || t.includes('big money') || t.includes('akumulasi') || t.includes('distribusi')) return `Berdasarkan perhitungan Value (Harga x Volume), ${s.bandarText} Kalau bandar lagi akumulasi (nimbun diam-diam), biasanya mereka lagi siap-siap narik harga naik. Kalau distribusi, mereka lagi untungin diri sendiri dengan jualan ke ritel yang FOMO.`; if (t.includes('ema') || t.includes('tren') || t.includes('trend')) return `Sekarang tren ${currentName} gimana ya? ${s.trendText} Kalau lagi uptrend, sebaiknya cari posisi beli. Kalau downtrend, mending nunggu di pinggir aja dulu biar gak kena jebakan.`; if (t.includes('bollinger') || t.includes('bb') || t.includes('batas')) return `Posisi harga sekarang relatif ke Bollinger Bands: ${s.bbText} Bollinger Bands itu kayak rel jalur kereta. Kalau harga nabrak rel atas, biasanya bakal mantul turun. Kalau nabrak bawah, bakal mantul naik.`; if (t.includes('beli') || t.includes('jual') || t.includes('tahan') || t.includes('rekomendasi') || t.includes('saran') || t.includes('harus')) return `Saran aku buat ${currentName} sekarang adalah ${s.simpleText} Skor teknikalnya dapet ${s.score}/10. Alasan utamanya karena: ${s.reasons.join(', ')}. Ingat ya, ini murni hitungan matematika dari data market, jadi tetap jaga risiko!`; if (t.includes('halo') || t.includes('hai') || t.includes('hi') || t.includes('pagi') || t.includes('malam')) return `Halo! Lagi ngecek ${currentName} nih? Kondisinya sekarang ${s.simpleText}. Ada yang mau dijelasin lebih detail soal indikatornya?`; return `Hmm, aku belum paham maksud kamu. Tapi gini, ${currentName} sekarang disarankan ${s.simpleText}. Kamu bisa nanya specifik kok, misal: "Kenapa RSI tinggi?", "Bandar lagi ngapain?", atau "Jelasin MACD dong".`; }
+function sendChat() { const input = document.getElementById('chatInput'); const text = input.value.trim(); if (!text) return; addChatMessage('user', text); setTimeout(() => { addChatMessage('ai', getLinaResponse(text)); }, 500); input.value = ''; }
+async function handlePdfUpload(file) { if (!file || file.type !== 'application/pdf') { addChatMessage('ai', 'Waduh, filenya harus PDF ya. 😅'); return; } addChatMessage('user', `📎 ${file.name}`); addChatMessage('ai', `Oke, aku lagi baca ${file.name}... Tunggu bentar ya.`); try { const reader = new FileReader(); reader.onload = async (e) => { const typedArray = new Uint8Array(e.target.result); const pdf = await pdfjsLib.getDocument(typedArray).promise; let pdfText = ''; const maxPages = Math.min(pdf.numPages, 5); for (let i = 1; i <= maxPages; i++) { const page = await pdf.getPage(i); const textContent = await page.getTextContent(); textContent.items.forEach(item => pdfText += item.str + ' '); } analyzeExtractedPdfText(pdfText); }; reader.readAsArrayBuffer(file); } catch (err) { addChatMessage('ai', 'Aduh, aku gak bisa baca PDF-nya.'); } }
+function analyzeExtractedPdfText(text) { const t = text.toLowerCase(); let response = "Aku udah baca PDFnya. "; if (t.includes('strong buy') || t.includes('beli kuat')) response += "Di laporan ini jelas banget disuruh STRONG BUY! Artinya indikator lagi kompak banget buat naik. "; else if (t.includes('strong sell') || t.includes('jual segera')) response += "Hati-hati! Di laporan ini disuruh STRONG SELL. Ada tanda bahaya buat jualan. "; else if (t.includes('buy') || t.includes('beli')) response += "Di laporan ini ada saran buat BELI. "; else if (t.includes('sell') || t.includes('jual')) response += "Di laporan ini ada saran buat JUAL. "; if (t.includes('bandar akumulasi') || t.includes('nampung barang')) response += "Bandar juga kelihatan lagi nimbun barang diam-diam (Akumulasi). "; if (t.includes('bandar distribusi') || t.includes('buang barang')) response += "Bandar lagi buang barang nih (Distribusi), mending hati-hati. "; if (t.includes('oversold') || t.includes('murah')) response += "Harga lagi murah banget (Oversold), peluang bagus buat beli. "; if (t.includes('overbought') || t.includes('mahal')) response += "Harga udah mahal (Overbought), mending nunggu koreksi dulu. "; if (t.includes('uptrend') || t.includes('naik')) response += "Tren lagi naik (Uptrend). "; if (t.includes('downtrend') || t.includes('turun')) response += "Tren lagi turun (Downtrend). "; if (response === "Aku udah baca PDFnya. ") { response += "Isinya bahas soal laporan keuangan/analisa. Tapi gak ada sinyal jual/beli spesifik yang ketangkap. Kamu mau nanya bagian mana nih?"; } else { response += "<br><br>Kamu mau nanya detailnya gimana? Misal 'Kenapa disuruh beli?' atau 'Jelasin RSI dong'."; } addChatMessage('ai', response); }
+
+function showPage(page) {
+    document.getElementById('page-dashboard').classList.add('hidden');
+    document.getElementById('page-porto').classList.add('hidden');
+    document.getElementById('page-assistant').classList.add('hidden');
+    document.getElementById('page-profil').classList.add('hidden');
+    document.getElementById('navDashboard').className = 'px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 transition';
+    document.getElementById('navPorto').className = 'px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 transition';
+    document.getElementById('navAssistant').className = 'px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 transition';
+    document.getElementById('navProfil').className = 'px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-gray-400 hover:bg-gray-700 ml-auto transition';
+    if (page === 'dashboard') { document.getElementById('page-dashboard').classList.remove('hidden'); document.getElementById('navDashboard').className = 'px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white transition'; } 
+    else if (page === 'porto') { document.getElementById('page-porto').classList.remove('hidden'); document.getElementById('navPorto').className = 'px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white transition'; } 
+    else if (page === 'assistant') { document.getElementById('page-assistant').classList.remove('hidden'); document.getElementById('navAssistant').className = 'px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white transition'; }
+    else if (page === 'profil') { document.getElementById('page-profil').classList.remove('hidden'); document.getElementById('navProfil').className = 'px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white ml-auto transition'; }
+}
+window.showPage = showPage;
+window.loadSymbolFromScreener = function(market, unifiedSym) { document.getElementById('marketSelect').value = market; document.getElementById('marketSelect').dispatchEvent(new Event('change')); document.getElementById('symbolInput').value = unifiedSym; loadFromInput(); showPage('dashboard'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+window.removePorto = removePorto;
+
+document.getElementById('marketSelect').addEventListener('change', (e) => { const market = e.target.value; const input = document.getElementById('symbolInput'); const intervalSelect = document.getElementById('intervalSelect'); if (market === 'NASDAQ') input.placeholder = 'Contoh: AAPL'; else if (market === 'IDX') input.placeholder = 'Contoh: BBCA'; else if (market === 'CRYPTO') input.placeholder = 'Contoh: BTCUSD'; input.value = ''; input.focus(); if (market === 'IDX') { intervalSelect.innerHTML = '<option value="D" selected>1D</option><option value="W">1W</option>'; } else { intervalSelect.innerHTML = '<option value="15">15m</option><option value="60" selected>1H</option><option value="240">4H</option><option value="D">1D</option><option value="W">1W</option>'; } });
+document.getElementById('loadChartBtn').addEventListener('click', loadFromInput);
+document.getElementById('symbolInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') loadFromInput(); });
+document.getElementById('rangeSelect').addEventListener('change', loadAnalysis);
+document.getElementById('screenerScanBtn').addEventListener('click', runScreener);
+document.getElementById('downloadPdfBtn').addEventListener('click', generatePDF);
+document.getElementById('autoScanCheck').addEventListener('change', (e) => { if (e.target.checked) { runScreener(); autoScanInterval = setInterval(runScreener, 300000); } else clearInterval(autoScanInterval); });
+document.getElementById('clearSignalsBtn').addEventListener('click', () => { document.getElementById('signalLog').innerHTML = '<p class="text-xs text-gray-600 text-center py-4">Belum ada sinyal terdeteksi</p>'; });
+document.getElementById('notifBtn').addEventListener('click', async () => { if (!('Notification' in window)) { alert('Browser tidak mendukung notifikasi'); return; } if (Notification.permission === 'granted') { notificationsEnabled = !notificationsEnabled; document.getElementById('notifBtn').style.background = notificationsEnabled ? '#1e3a5f' : ''; alert(notificationsEnabled ? 'Notifikasi diaktifkan' : 'Notifikasi dinonaktifkan'); } else { const p = await Notification.requestPermission(); if (p === 'granted') { notificationsEnabled = true; document.getElementById('notifBtn').style.background = '#1e3a5f'; new Notification('✅ Lina AI', { body: 'Notifikasi diaktifkan.' }); } } });
+document.getElementById('addPortoBtn').addEventListener('click', addPorto);
+document.getElementById('scanPortoBtn').addEventListener('click', scanPorto);
+document.getElementById('sendChatBtn').addEventListener('click', sendChat);
+document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChat(); });
+document.getElementById('attachBtn').addEventListener('click', () => document.getElementById('pdfUpload').click());
+document.getElementById('pdfUpload').addEventListener('change', (e) => { if(e.target.files[0]) handlePdfUpload(e.target.files[0]); e.target.value = ''; });
+const chatBox = document.getElementById('chatBox'); const dropZone = document.getElementById('dropZone');
+chatBox.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.remove('hidden'); dropZone.classList.add('dropzone-active'); });
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dropzone-active'); });
+dropZone.addEventListener('dragleave', (e) => { dropZone.classList.remove('dropzone-active'); dropZone.classList.add('hidden'); });
+chatBox.addEventListener('dragleave', (e) => { if (e.relatedTarget && !chatBox.contains(e.relatedTarget)) { dropZone.classList.add('hidden'); } });
+chatBox.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dropzone-active'); dropZone.classList.add('hidden'); if (e.dataTransfer.files.length > 0) handlePdfUpload(e.dataTransfer.files[0]); });
+
+// Event Listener Login Local & Google Link
+document.getElementById('login-btn').addEventListener('click', () => {
+    const name = document.getElementById('username-input').value.trim();
+    if (!name) { alert('Masukkan nama kamu dulu!'); return; }
+    currentUser = { name: name, googleLinked: false };
+    localStorage.setItem('linaCurrentUser', JSON.stringify(currentUser));
+    enterApp();
+});
+document.getElementById('username-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') document.getElementById('login-btn').click();
+});
+document.getElementById('link-google-btn').addEventListener('click', () => {
+    // Mock linking Google Account (Simulasi)
+    if (confirm("Fitur kaitkan Google simulasi. Kamu mau kaitkan dengan email demo?")) {
+        currentUser.googleLinked = true;
+        currentUser.email = "user_demo@gmail.com";
+        localStorage.setItem('linaCurrentUser', JSON.stringify(currentUser));
+        enterApp(); // Refresh UI
+    }
+});
+document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem('linaCurrentUser');
+    location.reload();
+});
+
+// Init App
+initAuth();
+</script>
+</body>
+</html>
